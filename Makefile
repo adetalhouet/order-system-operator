@@ -12,7 +12,7 @@ endif
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG ?= adetalhouet/order-system-operator:latest
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true"
 
@@ -115,3 +115,14 @@ bundle: manifests
 # Build the bundle image.
 bundle-build:
 	docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+
+# Build and deploy the operator
+build:
+	./build.sh
+
+# Setup OKD UI for Operator
+setup-ui:
+	secretname=$(kubectl get serviceaccount default --namespace=kube-system -o jsonpath='{.secrets[0].name}')
+	endpoint=$(kubectl config view -o json | jq '{myctx: .["current-context"], ctxs: .contexts[], clusters: .clusters[]}' | jq 'select(.myctx == .ctxs.name)' | jq 'select(.ctxs.context.cluster ==  .clusters.name)' | jq '.clusters.cluster.server' -r)
+	docker run -d -p 9000:9000 -e BRIDGE_USER_AUTH="disabled" -e BRIDGE_K8S_MODE="off-cluster" -e BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT="$endpoint" -e BRIDGE_K8S_MODE_OFF_CLUSTER_SKIP_VERIFY_TLS=true -e BRIDGE_K8S_AUTH="bearer-token" -e BRIDGE_K8S_AUTH_BEARER_TOKEN="$(kubectl get secret "$secretname" --namespace=kube-system -o template --template='{{.data.token}}' | base64 --decode)" quay.io/openshift/origin-console:latest
+

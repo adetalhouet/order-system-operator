@@ -1,0 +1,8 @@
+apiVersion: apps.adetalhouet.io/v1alpha1
+kind: OrderSystem
+metadata:
+  name: test
+spec:
+  autoscaleEnabled: "false"
+  injectIstioSidecarEnabled: "false"
+  version: "1.0.0"

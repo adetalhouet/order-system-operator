@@ -22,9 +22,14 @@ import (
 
 // OrderSystemSpec defines the desired state of OrderSystem
 type OrderSystemSpec struct {
-	// +kubebuilder:validation:Minimum=0
-	// Size is the size of the OrderSystem deployment
-	Size int32 `json:"size,omitempty"`
+	// Version of the Order System
+	Version string `json:"version"`
+
+	// Whether or not to inject Istio
+	InjectIstioSidecarEnabled string `json:"injectIstioSidecarEnabled"`
+
+	// Autoscale
+	AutoscaleEnabled string `json:"autoscaleEnabled"`
 }
 
 // OrderSystemStatus defines the observed state of OrderSystem

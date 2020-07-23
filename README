@@ -1,5 +1,23 @@
-Work in progress
+## TODO
+- delete
+- update
+- autoscale
+- what else?
 
-https://sdk.operatorframework.io/docs/golang/quickstart/
-https://github.com/operator-framework/operator-sdk/blob/master/example/memcached-operator/memcached_controller.go.tmpl
-https://book.kubebuilder.io/cronjob-tutorial/controller-implementation.html
+## Prerequisites
+
+```
+helm install order-system-db -n default \
+  --set postgresqlUsername=order-system,postgresqlPassword=Password123,postgresqlDatabase=order-system \
+  bitnami/postgresql
+
+helm install order-system-nats -n default \
+  --set auth.enabled=true,auth.user=order-system,auth.password=Password123 \
+    bitnami/nats
+```
+
+## Install
+...
+
+## Apply CRD
+`kubectl apply -f example/order-system.yaml`
