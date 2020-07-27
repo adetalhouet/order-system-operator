@@ -23,6 +23,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -59,11 +60,11 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
-	// watchNamespace, err := getWatchNamespace()
-	// if err != nil {
-	// 	setupLog.Error(err, "Unable to get WatchNamespace, "+
-	// 		"the manager will watch and manage resources in all namespaces")
-	// }
+	watchNamespace, err := getWatchNamespace()
+	if err != nil {
+		setupLog.Error(err, "Unable to get WatchNamespace, "+
+			"the manager will watch and manage resources in all namespaces")
+	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:             scheme,
@@ -71,22 +72,14 @@ func main() {
 		Port:               9443,
 		LeaderElection:     enableLeaderElection,
 		LeaderElectionID:   "9fd39e42.adetalhouet.io",
-		// Namespace:          watchNamespace,
+		Namespace:          watchNamespace,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
-	if err = (&controllers.OrderSystemReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("OrderSystem"),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "OrderSystem")
-		os.Exit(1)
-	}
-	// +kubebuilder:scaffold:builder
+	controllers.Add(mgr)
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
@@ -96,15 +89,15 @@ func main() {
 }
 
 // getWatchNamespace returns the Namespace the operator should be watching for changes
-// func getWatchNamespace() (string, error) {
-// 	// WatchNamespaceEnvVar is the constant for env variable WATCH_NAMESPACE
-// 	// which specifies the Namespace to watch.
-// 	// An empty value means the operator is running with cluster scope.
-// 	var watchNamespaceEnvVar = "WATCH_NAMESPACE"
+func getWatchNamespace() (string, error) {
+	// WatchNamespaceEnvVar is the constant for env variable WATCH_NAMESPACE
+	// which specifies the Namespace to watch.
+	// An empty value means the operator is running with cluster scope.
+	var watchNamespaceEnvVar = "WATCH_NAMESPACE"
 
-// 	ns, found := os.LookupEnv(watchNamespaceEnvVar)
-// 	if !found {
-// 		return "", fmt.Errorf("%s must be set", watchNamespaceEnvVar)
-// 	}
-// 	return ns, nil
-// }
+	ns, found := os.LookupEnv(watchNamespaceEnvVar)
+	if !found {
+		return "", fmt.Errorf("%s must be set", watchNamespaceEnvVar)
+	}
+	return ns, nil
+}

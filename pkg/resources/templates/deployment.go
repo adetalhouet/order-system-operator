@@ -17,6 +17,7 @@ limitations under the License.
 package templates
 
 import (
+	"strconv"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -26,30 +27,44 @@ import (
 	appsv1alpha1 "github.com/adetalhouet/order-system-operator/api/v1alpha1"
 )
 
+const isIstioEnabledAnnotation = "sidecar.istio.io/inject"
+
+// IsAnnotationsValidOrSet validates current deployment annotations are as define as expected,
+// else set them properly. Return `true` is annotations were valid, `false` otherwise
+func IsAnnotationsValidOrSet(currentDep *appsv1.Deployment, value bool) bool {
+	if currentDep.GetAnnotations()[isIstioEnabledAnnotation] != strconv.FormatBool(value) {
+		currentDep.SetAnnotations(getAnnotations(value))
+		return false
+	}
+	return true
+}
+
+// GetOrderSystemLabels returns the labels for that CRD deployments
 func GetOrderSystemLabels(name string) map[string]string {
 	return map[string]string{"app": "order-system", "ordersystem_cr": name}
 }
 
-func DeploymentList(orderSystem *appsv1alpha1.OrderSystem) []appsv1.Deployment {
-
-	deps := make([]appsv1.Deployment, 0)
-
-	deps = append(deps, deploymentSpec(orderSystem, "adetalhouet/cart-service", "cart-service", 9090))
-	deps = append(deps, deploymentSpec(orderSystem, "adetalhouet/client-service", "client-service", 9091))
-	deps = append(deps, deploymentSpec(orderSystem, "adetalhouet/order-service", "order-service", 9092))
-	deps = append(deps, deploymentSpec(orderSystem, "adetalhouet/product-service", "product-service", 9093))
-	deps = append(deps, deploymentSpec(orderSystem, "adetalhouet/order-system-api-gw", "order-system-api-gw", 9090))
-
-	return deps
+// IsOrderSystemLabels checks whether we deal with order system object
+func IsOrderSystemLabels(labels map[string]string) bool {
+	if labels != nil && labels["app"] == "order-system" {
+		return true
+	}
+	return false
 }
 
-func deploymentSpec(orderSystem *appsv1alpha1.OrderSystem, containerName string, deployementName string, port int32) appsv1.Deployment {
+// GetDeploymentName returns the name of the deployment
+func GetDeploymentName(orderSystem *appsv1alpha1.OrderSystem, deploymentName string) string {
+	return deploymentName + "-" + orderSystem.Name
+}
+
+// DeploymentSpec is the deployment manifest template
+func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string, port int32) *appsv1.Deployment {
 	isIstioEnabled := orderSystem.Spec.InjectIstioSidecarEnabled
 	ls := GetOrderSystemLabels(orderSystem.Name)
 
-	dep := appsv1.Deployment{
+	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      deployementName + "-" + orderSystem.Name,
+			Name:      GetDeploymentName(orderSystem, deploymentName),
 			Namespace: orderSystem.Namespace,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -59,16 +74,16 @@ func deploymentSpec(orderSystem *appsv1alpha1.OrderSystem, containerName string,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      ls,
-					Annotations: getOrderSystemAnnotations(isIstioEnabled),
+					Annotations: getAnnotations(isIstioEnabled),
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
-						Image:           containerName + ":" + orderSystem.Spec.Version,
+						Image:           "adetalhouet/" + deploymentName + ":" + orderSystem.Spec.Version,
 						ImagePullPolicy: corev1.PullAlways,
-						Name:            deployementName,
+						Name:            deploymentName,
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: port,
-							Name:          strings.Split(deployementName, "-")[0] + "-http",
+							Name:          strings.Split(deploymentName, "-")[0] + "-http",
 						}},
 					}},
 				},
@@ -78,6 +93,6 @@ func deploymentSpec(orderSystem *appsv1alpha1.OrderSystem, containerName string,
 	return dep
 }
 
-func getOrderSystemAnnotations(isIstioEnabled string) map[string]string {
-	return map[string]string{"sidecar.istio.io/inject": isIstioEnabled}
+func getAnnotations(isIstioEnabled bool) map[string]string {
+	return map[string]string{isIstioEnabledAnnotation: strconv.FormatBool(isIstioEnabled)}
 }

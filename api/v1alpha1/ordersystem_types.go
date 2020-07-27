@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"github.com/operator-framework/operator-sdk/pkg/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -24,22 +25,28 @@ import (
 type OrderSystemSpec struct {
 	// Version of the Order System
 	Version string `json:"version"`
-
 	// Whether or not to inject Istio
-	InjectIstioSidecarEnabled string `json:"injectIstioSidecarEnabled"`
-
+	InjectIstioSidecarEnabled bool `json:"injectIstioSidecarEnabled"`
 	// Autoscale
-	AutoscaleEnabled string `json:"autoscaleEnabled"`
+	AutoscaleEnabled bool `json:"autoscaleEnabled"`
+
+	// Status
+	Initialized bool `json:"initialized"`
+	Valid       bool `json:"valid"`
+	Error       bool `json:"error"`
 }
 
 // OrderSystemStatus defines the observed state of OrderSystem
 type OrderSystemStatus struct {
-	// Nodes are the names of the memcached pods
-	Nodes []string `json:"nodes"`
+	Conditions status.Conditions `json:"conditions"`
+}
 
-	// Information when was the last time the OrderSystem was successfully deployed.
-	// +optional
-	LastDeployed *metav1.Time `json:"lastDeployed,omitempty"`
+func (orderSystem *OrderSystem) GetReconcileStatus() status.Conditions {
+	return orderSystem.Status.Conditions
+}
+
+func (orderSystem *OrderSystem) SetReconcileStatus(reconcileStatus status.Conditions) {
+	orderSystem.Status.Conditions = reconcileStatus
 }
 
 // +kubebuilder:object:root=true
