@@ -38,14 +38,15 @@ spec:
           properties:
             autoscaleEnabled:
               description: Autoscale
-              type: string
+              type: boolean
             error:
               type: boolean
             initialized:
+              description: Status
               type: boolean
             injectIstioSidecarEnabled:
               description: Whether or not to inject Istio
-              type: string
+              type: boolean
             valid:
               type: boolean
             version:

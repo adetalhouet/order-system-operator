@@ -26,7 +26,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -37,10 +36,11 @@ import (
 )
 
 const controllerName = "ordersystem_crd"
+const orderSystemFinalizer = "io.adetalhouet.ordersystem.finalizer"
 
 var log = logf.Log.WithName(controllerName)
 
-// Add creates a new MyCRD Controller and adds it to the Manager. The Manager will set fields on the Controller
+// Add creates a new orderSystem Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
 	return add(mgr, newReconciler(mgr))
@@ -56,33 +56,25 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Create a new controller
-	c, err := controller.New("ordersystem_crd_controller", mgr, controller.Options{Reconciler: r})
+	c, err := controller.New(controllerName, mgr, controller.Options{Reconciler: r})
 	if err != nil {
 		return err
 	}
-
-	// isOrderSysteDeployment := predicate.Funcs{
-	// 	UpdateFunc: func(e event.UpdateEvent) bool {
-	// 		return templates.IsOrderSystemLabels(e.MetaNew.GetLabels())
-	// 	},
-	// 	CreateFunc: func(e event.CreateEvent) bool {
-	// 		return templates.IsOrderSystemLabels(e.Meta.GetLabels())
-	// 	},
-	// 	DeleteFunc: func(e event.DeleteEvent) bool {
-	// 		return templates.IsOrderSystemLabels(e.Meta.GetLabels())
-	// 	},
-	// }
 
 	// Watch for changes to primary resource OrderSystem
-	err = c.Watch(&source.Kind{Type: &appsv1alpha1.OrderSystem{}}, &handler.EnqueueRequestForObject{}, util.ResourceGenerationOrFinalizerChangedPredicate{})
+	err = c.Watch(&source.Kind{Type: &appsv1alpha1.OrderSystem{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
 		return err
 	}
 
-	// Watch for OrderSystem deployment OrderSystem
-	// err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
-	// 	IsController: true,
-	// }, isOrderSysteDeployment)
+	// Watch for changes to secondary resource deployment OrderSystem
+	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType:    &appsv1alpha1.OrderSystem{},
+	})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -132,7 +124,7 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 
 	// Managing CR Finalization
 	if util.IsBeingDeleted(instance) {
-		if !util.HasFinalizer(instance, controllerName) {
+		if !util.HasFinalizer(instance, orderSystemFinalizer) {
 			return reconcile.Result{}, nil
 		}
 		err := reconciler.manageCleanUpLogic(instance)
@@ -140,7 +132,7 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 			log.Error(err, "unable to delete instance", "instance", instance)
 			return reconciler.ManageError(instance, err)
 		}
-		util.RemoveFinalizer(instance, controllerName)
+		util.RemoveFinalizer(instance, orderSystemFinalizer)
 		err = reconciler.GetClient().Update(context.TODO(), instance)
 		if err != nil {
 			log.Error(err, "unable to update instance", "instance", instance)
@@ -154,53 +146,56 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 	if err != nil {
 		return reconciler.ManageError(instance, err)
 	}
+
 	return reconciler.ManageSuccess(instance)
 }
 
 func (reconciler *OrderSystemReconciler) isInitialized(obj metav1.Object) bool {
-	mycrd, ok := obj.(*appsv1alpha1.OrderSystem)
+	orderSystem, ok := obj.(*appsv1alpha1.OrderSystem)
 	if !ok {
 		return false
 	}
-	if mycrd.Spec.Initialized {
+	if orderSystem.Spec.Initialized {
 		return true
 	}
-	util.AddFinalizer(mycrd, controllerName)
-	mycrd.Spec.Initialized = true
+	util.AddFinalizer(orderSystem, orderSystemFinalizer)
+	orderSystem.Spec.Initialized = true
 	return false
 
 }
 
 func (reconciler *OrderSystemReconciler) isValid(obj metav1.Object) (bool, error) {
-	mycrd, ok := obj.(*appsv1alpha1.OrderSystem)
+	orderSystem, ok := obj.(*appsv1alpha1.OrderSystem)
 	if !ok {
-		return false, errors.New("not a OrderSystem object")
+		return false, errors.New("not an OrderSystem object")
 	}
-	if mycrd.Spec.Valid {
+	if orderSystem.Spec.Valid {
 		return true, nil
 	}
-	return false, errors.New("not valid because blah blah")
+	return false, errors.New("not valid")
 }
 
 func (reconciler *OrderSystemReconciler) manageCleanUpLogic(orderSystem *appsv1alpha1.OrderSystem) error {
-	return nil
+	return reconciler.handleDeployment(orderSystem, true)
 }
 
 func (reconciler *OrderSystemReconciler) manageOperatorLogic(orderSystem *appsv1alpha1.OrderSystem) error {
 	if orderSystem.Spec.Error {
-		return errors.New("error because blah blah")
+		return errors.New("error")
 	}
-	// Vaidate CRD instance exist, else create
-	err := reconciler.validateIfDeploymentExistOrCreate(orderSystem)
+	err := reconciler.handleDeployment(orderSystem, false)
+	if err != nil {
+		return err
+	}
 
 	// TODO check service
 	// TODO check database -- move db service name to CRD
 	// TODO check configmap
 
-	return err
+	return nil
 }
 
-func (reconciler *OrderSystemReconciler) validateIfDeploymentExistOrCreate(orderSystem *appsv1alpha1.OrderSystem) error {
+func (reconciler *OrderSystemReconciler) handleDeployment(orderSystem *appsv1alpha1.OrderSystem, isDelete bool) error {
 	// this is the list of expected deployment for the OrderSystem CRD, along with the service port
 	var deployments = map[string]int32{
 		"cart-service":        9090,
@@ -209,41 +204,27 @@ func (reconciler *OrderSystemReconciler) validateIfDeploymentExistOrCreate(order
 		"product-service":     9093,
 		"order-system-api-gw": 8080}
 
-	for deployment, port := range deployments {
-		err := reconciler.doValidateIfExistOrCreate(orderSystem, deployment, port)
-		if err != nil {
-			return err
+	for name, port := range deployments {
+
+		depName := templates.GetDeploymentName(orderSystem, name)
+		depLog := log.WithValues("Deployment.Namespace", orderSystem.Namespace, "Deployment.Name", depName)
+		dep := templates.DeploymentSpec(orderSystem, name, port)
+
+		if !isDelete {
+			depLog.Info("Create deployment if not exists")
+			err := reconciler.CreateResourceIfNotExists(orderSystem, orderSystem.Namespace, dep)
+			if err != nil {
+				depLog.Error(err, "fail to create instance", "instance", orderSystem)
+				return err
+			}
+		} else {
+			depLog.Info("Delete deployment if exists")
+			err := reconciler.DeleteResourceIfExists(dep)
+			if err != nil {
+				depLog.Error(err, "fail to delete instance", "instance", orderSystem)
+				return err
+			}
 		}
 	}
-	return nil
-}
-
-func (reconciler *OrderSystemReconciler) doValidateIfExistOrCreate(orderSystem *appsv1alpha1.OrderSystem, deploymentName string, containerPort int32) error {
-	ctx := context.Background()
-	currentDep := &appsv1.Deployment{}
-	depName := templates.GetDeploymentName(orderSystem, deploymentName)
-	log.WithValues("Deployment.Namespace", orderSystem.Namespace, "Deployment.Name", depName)
-
-	// reconciler.CreateIfNotExistTemplatedResources()
-
-	err := reconciler.GetClient().Get(ctx, types.NamespacedName{Name: depName, Namespace: orderSystem.Namespace}, currentDep)
-	if err != nil && apierrors.IsNotFound(err) {
-		log.Info("Deployment not found")
-		dep := templates.DeploymentSpec(orderSystem, deploymentName, containerPort)
-		log.Info("Created new Deployment")
-		err = reconciler.GetClient().Create(ctx, dep)
-		if err != nil {
-			log.Error(err, "Failed to create new Deployment")
-			return err
-		}
-		// Deployment created successfully - return and requeue
-		// Set OrderSystem instance as the owner and controller
-		ctrl.SetControllerReference(orderSystem, dep, reconciler.GetScheme())
-		return nil
-	} else if err != nil {
-		log.Error(err, "Failed to get Deployment")
-		return err
-	}
-	log.Info("Deployment already exist")
 	return nil
 }

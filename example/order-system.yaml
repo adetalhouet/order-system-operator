@@ -6,6 +6,6 @@ spec:
   initialized: false
   valid: true
   error: false
-  autoscaleEnabled: "false"
-  injectIstioSidecarEnabled: "false"
+  autoscaleEnabled: false
+  injectIstioSidecarEnabled: false
   version: "1.0.0"
