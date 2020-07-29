@@ -29,11 +29,6 @@ type OrderSystemSpec struct {
 	InjectIstioSidecarEnabled bool `json:"injectIstioSidecarEnabled"`
 	// Autoscale
 	AutoscaleEnabled bool `json:"autoscaleEnabled"`
-
-	// Status
-	Initialized bool `json:"initialized"`
-	Valid       bool `json:"valid"`
-	Error       bool `json:"error"`
 }
 
 // OrderSystemStatus defines the observed state of OrderSystem

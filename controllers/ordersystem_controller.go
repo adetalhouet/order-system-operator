@@ -40,6 +40,11 @@ const orderSystemFinalizer = "io.adetalhouet.ordersystem.finalizer"
 
 var log = logf.Log.WithName(controllerName)
 
+// OrderSystemReconciler reconciles a OrderSystem object
+type OrderSystemReconciler struct {
+	util.ReconcilerBase
+}
+
 // Add creates a new orderSystem Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
@@ -62,7 +67,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to primary resource OrderSystem
-	err = c.Watch(&source.Kind{Type: &appsv1alpha1.OrderSystem{}}, &handler.EnqueueRequestForObject{})
+	err = c.Watch(&source.Kind{Type: &appsv1alpha1.OrderSystem{}}, &handler.EnqueueRequestForObject{}, util.ResourceGenerationOrFinalizerChangedPredicate{})
 	if err != nil {
 		return err
 	}
@@ -71,17 +76,12 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &appsv1alpha1.OrderSystem{},
-	})
+	}, util.ResourceGenerationOrFinalizerChangedPredicate{})
 	if err != nil {
 		return err
 	}
 
 	return nil
-}
-
-// OrderSystemReconciler reconciles a OrderSystem object
-type OrderSystemReconciler struct {
-	util.ReconcilerBase
 }
 
 // +kubebuilder:rbac:groups=apps.adetalhouet.io,resources=ordersystems,verbs=get;list;watch;create;update;patch;delete
@@ -96,7 +96,7 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 
 	// Fetch the CRD instance
 	instance := &appsv1alpha1.OrderSystem{}
-	err := reconciler.GetClient().Get(context.TODO(), req.NamespacedName, instance)
+	err := reconciler.GetClient().Get(context.Background(), req.NamespacedName, instance)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("OrderSystem resource not found. Ignoring since object must be deleted")
@@ -114,7 +114,7 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 
 	// Managing CR Initialization
 	if ok := reconciler.isInitialized(instance); !ok {
-		err := reconciler.GetClient().Update(context.TODO(), instance)
+		err := reconciler.GetClient().Update(context.Background(), instance)
 		if err != nil {
 			log.Error(err, "unable to update instance", "instance", instance)
 			return reconciler.ManageError(instance, err)
@@ -133,7 +133,7 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 			return reconciler.ManageError(instance, err)
 		}
 		util.RemoveFinalizer(instance, orderSystemFinalizer)
-		err = reconciler.GetClient().Update(context.TODO(), instance)
+		err = reconciler.GetClient().Update(context.Background(), instance)
 		if err != nil {
 			log.Error(err, "unable to update instance", "instance", instance)
 			return reconciler.ManageError(instance, err)
@@ -155,24 +155,20 @@ func (reconciler *OrderSystemReconciler) isInitialized(obj metav1.Object) bool {
 	if !ok {
 		return false
 	}
-	if orderSystem.Spec.Initialized {
+	if util.HasFinalizer(orderSystem, orderSystemFinalizer) {
 		return true
 	}
 	util.AddFinalizer(orderSystem, orderSystemFinalizer)
-	orderSystem.Spec.Initialized = true
 	return false
 
 }
 
 func (reconciler *OrderSystemReconciler) isValid(obj metav1.Object) (bool, error) {
-	orderSystem, ok := obj.(*appsv1alpha1.OrderSystem)
+	_, ok := obj.(*appsv1alpha1.OrderSystem)
 	if !ok {
 		return false, errors.New("not an OrderSystem object")
 	}
-	if orderSystem.Spec.Valid {
-		return true, nil
-	}
-	return false, errors.New("not valid")
+	return true, nil
 }
 
 func (reconciler *OrderSystemReconciler) manageCleanUpLogic(orderSystem *appsv1alpha1.OrderSystem) error {
@@ -180,9 +176,6 @@ func (reconciler *OrderSystemReconciler) manageCleanUpLogic(orderSystem *appsv1a
 }
 
 func (reconciler *OrderSystemReconciler) manageOperatorLogic(orderSystem *appsv1alpha1.OrderSystem) error {
-	if orderSystem.Spec.Error {
-		return errors.New("error")
-	}
 	err := reconciler.handleDeployment(orderSystem, false)
 	if err != nil {
 		return err

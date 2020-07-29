@@ -39,25 +39,15 @@ spec:
             autoscaleEnabled:
               description: Autoscale
               type: boolean
-            error:
-              type: boolean
-            initialized:
-              description: Status
-              type: boolean
             injectIstioSidecarEnabled:
               description: Whether or not to inject Istio
-              type: boolean
-            valid:
               type: boolean
             version:
               description: Version of the Order System
               type: string
           required:
           - autoscaleEnabled
-          - error
-          - initialized
           - injectIstioSidecarEnabled
-          - valid
           - version
           type: object
         status:
