@@ -1,8 +1,9 @@
 ## TODO
-- delete
-- update
+- check DB & NATS service
+- fix configmap
 - autoscale
-- what else?
+- istio inject
+- apigw
 
 ## Prerequisites
 
