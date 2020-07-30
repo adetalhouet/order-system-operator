@@ -3,6 +3,8 @@ kind: OrderSystem
 metadata:
   name: test
 spec:
+  natsServiceName: "order-system-nats-client"
+  dbServiceName: "order-system-db-postgresql"
   autoscaleEnabled: false
   injectIstioSidecarEnabled: false
   version: "1.0.0"

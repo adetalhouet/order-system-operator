@@ -15,3 +15,16 @@ limitations under the License.
 */
 
 package templates
+
+// GetOrderSystemLabels returns the labels for that CRD deployments
+func GetOrderSystemLabels(name string) map[string]string {
+	return map[string]string{"app": "order-system", "ordersystem_cr": name}
+}
+
+// IsOrderSystemLabels checks whether we deal with order system object
+func IsOrderSystemLabels(labels map[string]string) bool {
+	if labels != nil && labels["app"] == "order-system" {
+		return true
+	}
+	return false
+}

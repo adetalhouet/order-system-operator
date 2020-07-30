@@ -3,6 +3,7 @@ module github.com/adetalhouet/order-system-operator
 go 1.13
 
 require (
+	github.com/go-akka/configuration v0.0.0-20200606091224-a002c0330665
 	github.com/onsi/ginkgo v1.12.0
 	github.com/onsi/gomega v1.9.0
 	github.com/operator-framework/operator-sdk v0.18.1

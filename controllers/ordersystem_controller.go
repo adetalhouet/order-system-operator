@@ -23,7 +23,9 @@ import (
 	appsv1alpha1 "github.com/adetalhouet/order-system-operator/api/v1alpha1"
 	"github.com/adetalhouet/order-system-operator/pkg/resources/templates"
 	"github.com/redhat-cop/operator-utils/pkg/util"
+	"github.com/redhat-cop/operator-utils/pkg/util/apis"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -81,12 +83,32 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	// Watch for changes to secondary resource service OrderSystem
+	err = c.Watch(&source.Kind{Type: &corev1.Service{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType:    &appsv1alpha1.OrderSystem{},
+	}, util.ResourceGenerationOrFinalizerChangedPredicate{})
+	if err != nil {
+		return err
+	}
+
+	// Watch for changes to secondary resource configmap OrderSystem
+	err = c.Watch(&source.Kind{Type: &corev1.ConfigMap{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType:    &appsv1alpha1.OrderSystem{},
+	}, util.ResourceGenerationOrFinalizerChangedPredicate{})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
 // +kubebuilder:rbac:groups=apps.adetalhouet.io,resources=ordersystems,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps.adetalhouet.io,resources=ordersystems/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;
 
 // Reconcile blah
@@ -115,6 +137,7 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 	// Managing CR Initialization
 	if ok := reconciler.isInitialized(instance); !ok {
 		err := reconciler.GetClient().Update(context.Background(), instance)
+		log.Info("Update object isInitialized")
 		if err != nil {
 			log.Error(err, "unable to update instance", "instance", instance)
 			return reconciler.ManageError(instance, err)
@@ -128,12 +151,15 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 			return reconcile.Result{}, nil
 		}
 		err := reconciler.manageCleanUpLogic(instance)
+		log.Info("Update object status manageCleanUpLogic")
+
 		if err != nil {
 			log.Error(err, "unable to delete instance", "instance", instance)
 			return reconciler.ManageError(instance, err)
 		}
 		util.RemoveFinalizer(instance, orderSystemFinalizer)
 		err = reconciler.GetClient().Update(context.Background(), instance)
+		log.Info("Update object RemoveFinalizer")
 		if err != nil {
 			log.Error(err, "unable to update instance", "instance", instance)
 			return reconciler.ManageError(instance, err)
@@ -147,6 +173,7 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 		return reconciler.ManageError(instance, err)
 	}
 
+	log.Info("Update object status end-of-loop")
 	return reconciler.ManageSuccess(instance)
 }
 
@@ -168,56 +195,48 @@ func (reconciler *OrderSystemReconciler) isValid(obj metav1.Object) (bool, error
 	if !ok {
 		return false, errors.New("not an OrderSystem object")
 	}
+
+	// TODO VALIDATE DB & NATS Service exist
+
 	return true, nil
 }
 
 func (reconciler *OrderSystemReconciler) manageCleanUpLogic(orderSystem *appsv1alpha1.OrderSystem) error {
-	return reconciler.handleDeployment(orderSystem, true)
+	return reconciler.handleResources(orderSystem, true)
 }
 
 func (reconciler *OrderSystemReconciler) manageOperatorLogic(orderSystem *appsv1alpha1.OrderSystem) error {
-	err := reconciler.handleDeployment(orderSystem, false)
+	err := reconciler.handleResources(orderSystem, false)
 	if err != nil {
 		return err
 	}
 
-	// TODO check service
-	// TODO check database -- move db service name to CRD
-	// TODO check configmap
+	// TODO handle istio
+	// TODO handle autoscale
 
 	return nil
 }
 
-func (reconciler *OrderSystemReconciler) handleDeployment(orderSystem *appsv1alpha1.OrderSystem, isDelete bool) error {
-	// this is the list of expected deployment for the OrderSystem CRD, along with the service port
-	var deployments = map[string]int32{
-		"cart-service":        9090,
-		"client-service":      9091,
-		"order-service":       9092,
-		"product-service":     9093,
-		"order-system-api-gw": 8080}
+func (reconciler *OrderSystemReconciler) handleResources(orderSystem *appsv1alpha1.OrderSystem, isDelete bool) error {
+	resources := []apis.Resource{}
 
-	for name, port := range deployments {
+	var deployments = map[string]templates.Service{
+		"cart-service":    templates.Service{Port: 9090, Type: corev1.ServiceTypeClusterIP},
+		"client-service":  templates.Service{Port: 9091, Type: corev1.ServiceTypeClusterIP},
+		"order-service":   templates.Service{Port: 9092, Type: corev1.ServiceTypeClusterIP},
+		"product-service": templates.Service{Port: 9093, Type: corev1.ServiceTypeClusterIP},
+		"api-gw-service":  templates.Service{Port: 8080, Type: corev1.ServiceTypeLoadBalancer}}
 
-		depName := templates.GetDeploymentName(orderSystem, name)
-		depLog := log.WithValues("Deployment.Namespace", orderSystem.Namespace, "Deployment.Name", depName)
-		dep := templates.DeploymentSpec(orderSystem, name, port)
+	resources = append(resources, templates.ConfigMapSpec(orderSystem, deployments, orderSystem.Spec.DatabaseService, orderSystem.Spec.NatsService))
 
-		if !isDelete {
-			depLog.Info("Create deployment if not exists")
-			err := reconciler.CreateResourceIfNotExists(orderSystem, orderSystem.Namespace, dep)
-			if err != nil {
-				depLog.Error(err, "fail to create instance", "instance", orderSystem)
-				return err
-			}
-		} else {
-			depLog.Info("Delete deployment if exists")
-			err := reconciler.DeleteResourceIfExists(dep)
-			if err != nil {
-				depLog.Error(err, "fail to delete instance", "instance", orderSystem)
-				return err
-			}
-		}
+	for podName, service := range deployments {
+		depName := templates.GetDeploymentName(orderSystem, podName)
+		resources = append(resources, templates.DeploymentSpec(orderSystem, depName, podName, service))
+		resources = append(resources, templates.ServiceSpec(orderSystem, depName, service))
 	}
-	return nil
+
+	if isDelete {
+		return reconciler.DeleteResourcesIfExist(resources)
+	}
+	return reconciler.CreateResourcesIfNotExist(orderSystem, orderSystem.Namespace, resources)
 }

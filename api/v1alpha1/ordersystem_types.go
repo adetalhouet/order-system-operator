@@ -29,6 +29,10 @@ type OrderSystemSpec struct {
 	InjectIstioSidecarEnabled bool `json:"injectIstioSidecarEnabled"`
 	// Autoscale
 	AutoscaleEnabled bool `json:"autoscaleEnabled"`
+	// Database service
+	DatabaseService string `json:"dbServiceName"`
+	// Nats service
+	NatsService string `json:"natsServiceName"`
 }
 
 // OrderSystemStatus defines the observed state of OrderSystem

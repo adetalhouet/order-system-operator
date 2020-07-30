@@ -39,15 +39,23 @@ spec:
             autoscaleEnabled:
               description: Autoscale
               type: boolean
+            dbServiceName:
+              description: Database service
+              type: string
             injectIstioSidecarEnabled:
               description: Whether or not to inject Istio
               type: boolean
+            natsServiceName:
+              description: Nats service
+              type: string
             version:
               description: Version of the Order System
               type: string
           required:
           - autoscaleEnabled
+          - dbServiceName
           - injectIstioSidecarEnabled
+          - natsServiceName
           - version
           type: object
         status:

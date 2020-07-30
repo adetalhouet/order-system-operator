@@ -18,7 +18,6 @@ package templates
 
 import (
 	"strconv"
-	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -39,32 +38,22 @@ func IsAnnotationsValidOrSet(currentDep *appsv1.Deployment, value bool) bool {
 	return true
 }
 
-// GetOrderSystemLabels returns the labels for that CRD deployments
-func GetOrderSystemLabels(name string) map[string]string {
-	return map[string]string{"app": "order-system", "ordersystem_cr": name}
-}
-
-// IsOrderSystemLabels checks whether we deal with order system object
-func IsOrderSystemLabels(labels map[string]string) bool {
-	if labels != nil && labels["app"] == "order-system" {
-		return true
-	}
-	return false
-}
-
 // GetDeploymentName returns the name of the deployment
-func GetDeploymentName(orderSystem *appsv1alpha1.OrderSystem, deploymentName string) string {
-	return deploymentName + "-" + orderSystem.Name
+func GetDeploymentName(orderSystem *appsv1alpha1.OrderSystem, podName string) string {
+	return podName + "-" + orderSystem.Name
 }
 
 // DeploymentSpec is the deployment manifest template
-func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string, port int32) *appsv1.Deployment {
+func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string, podName string, service Service) *appsv1.Deployment {
 	isIstioEnabled := orderSystem.Spec.InjectIstioSidecarEnabled
 	ls := GetOrderSystemLabels(orderSystem.Name)
+	cm := corev1.LocalObjectReference{
+		Name: ConfigMapApplicationConfigurationName,
+	}
 
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      GetDeploymentName(orderSystem, deploymentName),
+			Name:      deploymentName,
 			Namespace: orderSystem.Namespace,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -78,14 +67,31 @@ func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
-						Image:           "adetalhouet/" + deploymentName + ":" + orderSystem.Spec.Version,
+						Image:           "adetalhouet/order-system-" + podName + ":" + orderSystem.Spec.Version,
 						ImagePullPolicy: corev1.PullAlways,
-						Name:            deploymentName,
+						Name:            podName,
 						Ports: []corev1.ContainerPort{{
-							ContainerPort: port,
-							Name:          strings.Split(deploymentName, "-")[0] + "-http",
+							ContainerPort: service.Port,
+							Name:          service.Name,
 						}},
+						VolumeMounts: []corev1.VolumeMount{
+							{
+								Name:      "application-conf",
+								MountPath: "/app/resources/application.conf",
+								SubPath:   "application.conf",
+							},
+						},
 					}},
+					Volumes: []corev1.Volume{
+						{
+							Name: "application-conf",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: cm,
+								},
+							},
+						},
+					},
 				},
 			},
 		},
