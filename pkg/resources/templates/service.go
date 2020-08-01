@@ -24,9 +24,13 @@ import (
 )
 
 type Service struct {
-	Name string
 	Port int32
 	Type corev1.ServiceType
+}
+
+// GetServiceName returns the name of the service
+func GetServiceName(deploymentName string) string {
+	return deploymentName + "-svc"
 }
 
 // ServiceSpec is the service manifest template
@@ -36,7 +40,7 @@ func ServiceSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string, s
 	}
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      deploymentName + "-svc",
+			Name:      GetServiceName(deploymentName),
 			Namespace: orderSystem.Namespace,
 			Labels:    GetOrderSystemLabels(orderSystem.Name),
 		},

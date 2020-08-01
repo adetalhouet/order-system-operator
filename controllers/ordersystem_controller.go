@@ -28,6 +28,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	types "k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -110,6 +112,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 
 // Reconcile blah
 func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
@@ -191,14 +194,44 @@ func (reconciler *OrderSystemReconciler) isInitialized(obj metav1.Object) bool {
 }
 
 func (reconciler *OrderSystemReconciler) isValid(obj metav1.Object) (bool, error) {
-	_, ok := obj.(*appsv1alpha1.OrderSystem)
+	orderSystem, ok := obj.(*appsv1alpha1.OrderSystem)
 	if !ok {
 		return false, errors.New("not an OrderSystem object")
 	}
 
-	// TODO VALIDATE DB & NATS Service exist
+	// Validate the nats and db services exist
+	services := []string{orderSystem.Spec.DbInfo.Service, orderSystem.Spec.NatsInfo.Service}
+	service := &corev1.Service{}
+	err := reconciler.checkIfResourcesExist(orderSystem, services, service)
+	if err != nil {
+		return false, err
+	}
+
+	// Validate the nats and db secrets exists
+	secrets := []string{orderSystem.Spec.DbInfo.Secret, orderSystem.Spec.NatsInfo.Secret}
+	secret := &corev1.Secret{}
+	err = reconciler.checkIfResourcesExist(orderSystem, secrets, secret)
+	if err != nil {
+		return false, err
+	}
 
 	return true, nil
+}
+
+func (reconciler *OrderSystemReconciler) checkIfResourcesExist(orderSystem *appsv1alpha1.OrderSystem, objs []string, obj runtime.Object) error {
+	for _, objName := range objs {
+		objNamespaceName := types.NamespacedName{
+			Name:      objName,
+			Namespace: orderSystem.Namespace,
+		}
+		err := reconciler.GetClient().Get(context.Background(), objNamespaceName, obj)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return errors.New("provided object(" + objNamespaceName.String() + ") doesn't exist")
+			}
+		}
+	}
+	return nil
 }
 
 func (reconciler *OrderSystemReconciler) manageCleanUpLogic(orderSystem *appsv1alpha1.OrderSystem) error {
@@ -206,6 +239,7 @@ func (reconciler *OrderSystemReconciler) manageCleanUpLogic(orderSystem *appsv1a
 }
 
 func (reconciler *OrderSystemReconciler) manageOperatorLogic(orderSystem *appsv1alpha1.OrderSystem) error {
+
 	err := reconciler.handleResources(orderSystem, false)
 	if err != nil {
 		return err
@@ -220,17 +254,18 @@ func (reconciler *OrderSystemReconciler) manageOperatorLogic(orderSystem *appsv1
 func (reconciler *OrderSystemReconciler) handleResources(orderSystem *appsv1alpha1.OrderSystem, isDelete bool) error {
 	resources := []apis.Resource{}
 
-	var deployments = map[string]templates.Service{
+	var apps = map[string]templates.Service{
 		"cart-service":    templates.Service{Port: 9090, Type: corev1.ServiceTypeClusterIP},
 		"client-service":  templates.Service{Port: 9091, Type: corev1.ServiceTypeClusterIP},
 		"order-service":   templates.Service{Port: 9092, Type: corev1.ServiceTypeClusterIP},
 		"product-service": templates.Service{Port: 9093, Type: corev1.ServiceTypeClusterIP},
 		"api-gw-service":  templates.Service{Port: 8080, Type: corev1.ServiceTypeLoadBalancer}}
 
-	resources = append(resources, templates.ConfigMapSpec(orderSystem, deployments, orderSystem.Spec.DatabaseService, orderSystem.Spec.NatsService))
+	resources = append(resources, templates.ConfigMapSpec(orderSystem, apps))
 
-	for podName, service := range deployments {
+	for podName, service := range apps {
 		depName := templates.GetDeploymentName(orderSystem, podName)
+		// TODO inject secret as ENV
 		resources = append(resources, templates.DeploymentSpec(orderSystem, depName, podName, service))
 		resources = append(resources, templates.ServiceSpec(orderSystem, depName, service))
 	}

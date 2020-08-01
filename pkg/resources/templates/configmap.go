@@ -29,9 +29,9 @@ import (
 const ConfigMapApplicationConfigurationName = "order-system-apps-config"
 
 // ConfigMapSpec returns the configmap manifest
-func ConfigMapSpec(orderSystem *appsv1alpha1.OrderSystem, apps map[string]Service, dbServiceName string, natServiceName string) *corev1.ConfigMap {
+func ConfigMapSpec(orderSystem *appsv1alpha1.OrderSystem, apps map[string]Service) *corev1.ConfigMap {
 	configMapData := make(map[string]string, 0)
-	configMapData["application.conf"] = buildConfig(apps, dbServiceName, natServiceName)
+	configMapData["application.conf"] = BuildConfig(orderSystem, apps)
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ConfigMapApplicationConfigurationName,
@@ -43,58 +43,54 @@ func ConfigMapSpec(orderSystem *appsv1alpha1.OrderSystem, apps map[string]Servic
 
 // BuildConfig builds the config for the apps
 // TODO move creds to secret
-func buildConfig(apps map[string]Service, dbServiceName string, natServiceName string) Config {
+func BuildConfig(orderSystem *appsv1alpha1.OrderSystem, apps map[string]Service) string {
 	var configTemplate = `
-	nats {
-		host = "nats://natServiceName:4222"
-		connectionTimeout = 10
-		pingInterval = 20
-		maxPingsOut = 5
-		maxReconnects = 10
-		reconnectWait = 10
-		connectionName = "Test Order System NATS bus"
-	  
-		username = "order-system"
-		password = "Password123"
-	  }
-	  postgres {
-		driverName = "org.h2.Driver"
-		url = "jdbc:postgresql://dbServiceName:5432/order-system"
-		username = "order-system"
-		password = "Password123"
-	  }
-	  order {
-		url = "order-url"
-		port = order-port
-	  }
-	  product {
-		url = "product-url"
-		port = product-port
-	  }
-	  client {
-		url = "client-url"
-		port = client-port
-	  }
-	  cart {
-		url = "cart-url"
-		port = cart-port
-	  }
-	  api-gw {
-		port = api-gw-port
-	  }
-	  `
+nats {
+	host = "nats://natServiceName:4222"
+	connectionTimeout = 10
+	pingInterval = 20
+	maxPingsOut = 5
+	maxReconnects = 10
+	reconnectWait = 10
+	connectionName = "Test Order System NATS bus"
+}
+postgres {
+	driverName = "org.postgresql.Driver"
+	url = "jdbc:postgresql://dbServiceName:5432/order-system"
+}
+order {
+	url = "order-url"
+	port = order-port
+}
+product {
+	url = "product-url"
+	port = product-port
+}
+client {
+	url = "client-url"
+	port = client-port
+}
+cart {
+	url = "cart-url"
+	port = cart-port
+}
+api-gw {
+	port = api-gw-port
+}
+`
 
-	config := strings.Replace(configTemplate, "dbServiceName", dbServiceName, -1)
-	config = strings.Replace(config, "natServiceName", natServiceName, -1)
+	configTemplate = strings.Replace(configTemplate, "dbServiceName", orderSystem.Spec.DbInfo.Service, -1)
+	configTemplate = strings.Replace(configTemplate, "natServiceName", orderSystem.Spec.NatsInfo.Service, -1)
 
 	for podName, service := range apps {
+		depName := GetDeploymentName(orderSystem, podName)
 		app := strings.Split(podName, "-service")[0]
 		r := strings.NewReplacer(
-			app+"-url", service.Name,
+			app+"-url", GetServiceName(depName),
 			app+"-port", fmt.Sprint(service.Port))
 
-		config = r.Replace(configTemplate)
+		configTemplate = r.Replace(configTemplate)
 	}
 
-	return config
+	return configTemplate
 }

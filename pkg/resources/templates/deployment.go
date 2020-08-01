@@ -18,6 +18,7 @@ package templates
 
 import (
 	"strconv"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -72,8 +73,14 @@ func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string
 						Name:            podName,
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: service.Port,
-							Name:          service.Name,
+							Name:          strings.Split(deploymentName, "-")[0] + "-http",
 						}},
+						Env: []corev1.EnvVar{
+							genEnvFromSecret("DB_USERNAME", orderSystem.Spec.DbInfo.Secret, "username"),
+							genEnvFromSecret("DB_PASSWORD", orderSystem.Spec.DbInfo.Secret, "password"),
+							genEnvFromSecret("NATS_USERNAME", orderSystem.Spec.DbInfo.Secret, "username"),
+							genEnvFromSecret("NATS_PASSWORD", orderSystem.Spec.DbInfo.Secret, "password"),
+						},
 						VolumeMounts: []corev1.VolumeMount{
 							{
 								Name:      "application-conf",
@@ -101,4 +108,19 @@ func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string
 
 func getAnnotations(isIstioEnabled bool) map[string]string {
 	return map[string]string{isIstioEnabledAnnotation: strconv.FormatBool(isIstioEnabled)}
+}
+
+func genEnvFromSecret(envName string, secretName string, secretKey string) corev1.EnvVar {
+	env := corev1.EnvVar{
+		Name: envName,
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: secretName,
+				},
+				Key: secretKey,
+			},
+		},
+	}
+	return env
 }

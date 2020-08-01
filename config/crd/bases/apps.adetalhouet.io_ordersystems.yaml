@@ -39,23 +39,45 @@ spec:
             autoscaleEnabled:
               description: Autoscale
               type: boolean
-            dbServiceName:
-              description: Database service
-              type: string
             injectIstioSidecarEnabled:
               description: Whether or not to inject Istio
               type: boolean
-            natsServiceName:
+            nats:
               description: Nats service
-              type: string
+              properties:
+                credentialSecretName:
+                  description: Secret containing credentials, in form of username
+                    and password
+                  type: string
+                serviceName:
+                  description: Service name
+                  type: string
+              required:
+              - credentialSecretName
+              - serviceName
+              type: object
+            postgres:
+              description: Database service
+              properties:
+                credentialSecretName:
+                  description: Secret containing credentials, in form of username
+                    and password
+                  type: string
+                serviceName:
+                  description: Service name
+                  type: string
+              required:
+              - credentialSecretName
+              - serviceName
+              type: object
             version:
               description: Version of the Order System
               type: string
           required:
           - autoscaleEnabled
-          - dbServiceName
           - injectIstioSidecarEnabled
-          - natsServiceName
+          - nats
+          - postgres
           - version
           type: object
         status:

@@ -7,6 +7,10 @@
 
 ## Prerequisites
 
+NATS & DB credentials must be provided through secret, using the following keys:
+- username
+- password
+
 ```
 helm install order-system-db -n default \
   --set postgresqlUsername=order-system,postgresqlPassword=Password123,postgresqlDatabase=order-system \
@@ -15,6 +19,8 @@ helm install order-system-db -n default \
 helm install order-system-nats -n default \
   --set auth.enabled=true,auth.user=order-system,auth.password=Password123 \
     bitnami/nats
+
+kubectl create secret generic order-system-crendentials --from-literal=username=order-system --from-literal=password=Password123
 ```
 
 ## Install

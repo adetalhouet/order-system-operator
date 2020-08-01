@@ -21,6 +21,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type Info struct {
+	// Secret containing credentials, in form of username and password
+	Secret string `json:"credentialSecretName"`
+	// Service name
+	Service string `json:"serviceName"`
+}
+
 // OrderSystemSpec defines the desired state of OrderSystem
 type OrderSystemSpec struct {
 	// Version of the Order System
@@ -30,9 +37,9 @@ type OrderSystemSpec struct {
 	// Autoscale
 	AutoscaleEnabled bool `json:"autoscaleEnabled"`
 	// Database service
-	DatabaseService string `json:"dbServiceName"`
+	DbInfo Info `json:"postgres"`
 	// Nats service
-	NatsService string `json:"natsServiceName"`
+	NatsInfo Info `json:"nats"`
 }
 
 // OrderSystemStatus defines the observed state of OrderSystem
