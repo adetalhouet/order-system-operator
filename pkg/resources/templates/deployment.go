@@ -78,8 +78,8 @@ func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string
 						Env: []corev1.EnvVar{
 							genEnvFromSecret("DB_USERNAME", orderSystem.Spec.DbInfo.Secret, "username"),
 							genEnvFromSecret("DB_PASSWORD", orderSystem.Spec.DbInfo.Secret, "password"),
-							genEnvFromSecret("NATS_USERNAME", orderSystem.Spec.DbInfo.Secret, "username"),
-							genEnvFromSecret("NATS_PASSWORD", orderSystem.Spec.DbInfo.Secret, "password"),
+							genEnvFromSecret("NATS_USERNAME", orderSystem.Spec.NatsInfo.Secret, "username"),
+							genEnvFromSecret("NATS_PASSWORD", orderSystem.Spec.NatsInfo.Secret, "password"),
 						},
 						VolumeMounts: []corev1.VolumeMount{
 							{
