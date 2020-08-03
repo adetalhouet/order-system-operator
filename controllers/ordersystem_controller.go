@@ -140,7 +140,6 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 	// Managing CR Initialization
 	if ok := reconciler.isInitialized(instance); !ok {
 		err := reconciler.GetClient().Update(context.Background(), instance)
-		log.Info("Update object isInitialized")
 		if err != nil {
 			log.Error(err, "unable to update instance", "instance", instance)
 			return reconciler.ManageError(instance, err)
@@ -154,7 +153,6 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 			return reconcile.Result{}, nil
 		}
 		err := reconciler.manageCleanUpLogic(instance)
-		log.Info("Update object status manageCleanUpLogic")
 
 		if err != nil {
 			log.Error(err, "unable to delete instance", "instance", instance)
@@ -162,7 +160,6 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 		}
 		util.RemoveFinalizer(instance, orderSystemFinalizer)
 		err = reconciler.GetClient().Update(context.Background(), instance)
-		log.Info("Update object RemoveFinalizer")
 		if err != nil {
 			log.Error(err, "unable to update instance", "instance", instance)
 			return reconciler.ManageError(instance, err)
@@ -176,7 +173,6 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 		return reconciler.ManageError(instance, err)
 	}
 
-	log.Info("Update object status end-of-loop")
 	return reconciler.ManageSuccess(instance)
 }
 
@@ -265,7 +261,6 @@ func (reconciler *OrderSystemReconciler) handleResources(orderSystem *appsv1alph
 
 	for podName, service := range apps {
 		depName := templates.GetDeploymentName(orderSystem, podName)
-		// TODO inject secret as ENV
 		resources = append(resources, templates.DeploymentSpec(orderSystem, depName, podName, service))
 		resources = append(resources, templates.ServiceSpec(orderSystem, depName, service))
 	}

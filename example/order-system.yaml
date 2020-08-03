@@ -3,7 +3,7 @@ kind: OrderSystem
 metadata:
   name: test
 spec:
-  autoscaleEnabled: false
+  autoscaleEnabled: true
   injectIstioSidecarEnabled: false
   version: "1.0.0"
   nats:

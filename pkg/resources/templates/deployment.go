@@ -27,17 +27,7 @@ import (
 	appsv1alpha1 "github.com/adetalhouet/order-system-operator/api/v1alpha1"
 )
 
-const isIstioEnabledAnnotation = "sidecar.istio.io/inject"
-
-// IsAnnotationsValidOrSet validates current deployment annotations are as define as expected,
-// else set them properly. Return `true` is annotations were valid, `false` otherwise
-func IsAnnotationsValidOrSet(currentDep *appsv1.Deployment, value bool) bool {
-	if currentDep.GetAnnotations()[isIstioEnabledAnnotation] != strconv.FormatBool(value) {
-		currentDep.SetAnnotations(getAnnotations(value))
-		return false
-	}
-	return true
-}
+const injectIstoAnnotation = "sidecar.istio.io/inject"
 
 // GetDeploymentName returns the name of the deployment
 func GetDeploymentName(orderSystem *appsv1alpha1.OrderSystem, podName string) string {
@@ -47,6 +37,7 @@ func GetDeploymentName(orderSystem *appsv1alpha1.OrderSystem, podName string) st
 // DeploymentSpec is the deployment manifest template
 func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string, podName string, service Service) *appsv1.Deployment {
 	isIstioEnabled := orderSystem.Spec.InjectIstioSidecarEnabled
+	isAutoscaleEnabled := orderSystem.Spec.AutoscaleEnabled
 	ls := GetOrderSystemLabels(orderSystem.Name)
 	cm := corev1.LocalObjectReference{
 		Name: ConfigMapApplicationConfigurationName,
@@ -64,7 +55,7 @@ func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      ls,
-					Annotations: getAnnotations(isIstioEnabled),
+					Annotations: getAnnotations(isIstioEnabled, isAutoscaleEnabled),
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
@@ -106,8 +97,16 @@ func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string
 	return dep
 }
 
-func getAnnotations(isIstioEnabled bool) map[string]string {
-	return map[string]string{isIstioEnabledAnnotation: strconv.FormatBool(isIstioEnabled)}
+func getAnnotations(isIstioEnabled bool, isAutoscaleEnabled bool) map[string]string {
+	annotations := map[string]string{injectIstoAnnotation: strconv.FormatBool(isIstioEnabled)}
+
+	if isAutoscaleEnabled { // TODO extract to CRD
+		annotations["hpa.autoscaling.banzaicloud.io/minReplicas"] = "1"
+		annotations["hpa.autoscaling.banzaicloud.io/maxReplicas"] = "3"
+		annotations["cpu.hpa.autoscaling.banzaicloud.io/targetAverageUtilization"] = "70"
+	}
+
+	return annotations
 }
 
 func genEnvFromSecret(envName string, secretName string, secretKey string) corev1.EnvVar {
