@@ -1,7 +1,7 @@
 apiVersion: apps.adetalhouet.io/v1alpha1
 kind: OrderSystem
 metadata:
-  name: test
+  name: test-no-hpa
 spec:
   version: "1.0.0" #mandatory
   nats: #mandatory
@@ -9,8 +9,4 @@ spec:
     serviceName: "order-system-nats-client"
   postgres: #mandatory
      credentialSecretName: "order-system-crendentials"
-     serviceName: "order-system-db-postgresql"
-  autoscale:
-     enabled: true
-     minReplicas: "3"
-     maxReplicas: "5"
+     serviceName: "order-system-db-postgresql" 

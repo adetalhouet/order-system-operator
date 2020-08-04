@@ -29,6 +29,13 @@ import (
 
 const injectIstoAnnotation = "sidecar.istio.io/inject"
 
+const hpaMinReplicaAnnotation = "hpa.autoscaling.banzaicloud.io/minReplicas"
+const hpaMaxReplicaAnnotation = "hpa.autoscaling.banzaicloud.io/maxReplicas"
+const hpaCpuTargetAverageUtilizationAnnotation = "cpu.hpa.autoscaling.banzaicloud.io/targetAverageUtilization"
+const hpaDefaultMinReplicate = "1"
+const hpaDefaultMaxReplicate = "3"
+const hpaDefaultCpuTargetAverageUtilization = "70"
+
 // GetDeploymentName returns the name of the deployment
 func GetDeploymentName(orderSystem *appsv1alpha1.OrderSystem, podName string) string {
 	return podName + "-" + orderSystem.Name
@@ -36,8 +43,6 @@ func GetDeploymentName(orderSystem *appsv1alpha1.OrderSystem, podName string) st
 
 // DeploymentSpec is the deployment manifest template
 func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string, podName string, service Service) *appsv1.Deployment {
-	isIstioEnabled := orderSystem.Spec.InjectIstioSidecarEnabled
-	isAutoscaleEnabled := orderSystem.Spec.AutoscaleEnabled
 	ls := GetOrderSystemLabels(orderSystem.Name)
 	cm := corev1.LocalObjectReference{
 		Name: ConfigMapApplicationConfigurationName,
@@ -55,7 +60,7 @@ func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      ls,
-					Annotations: getAnnotations(isIstioEnabled, isAutoscaleEnabled),
+					Annotations: getAnnotations(orderSystem),
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
@@ -97,18 +102,6 @@ func DeploymentSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string
 	return dep
 }
 
-func getAnnotations(isIstioEnabled bool, isAutoscaleEnabled bool) map[string]string {
-	annotations := map[string]string{injectIstoAnnotation: strconv.FormatBool(isIstioEnabled)}
-
-	if isAutoscaleEnabled { // TODO extract to CRD
-		annotations["hpa.autoscaling.banzaicloud.io/minReplicas"] = "1"
-		annotations["hpa.autoscaling.banzaicloud.io/maxReplicas"] = "3"
-		annotations["cpu.hpa.autoscaling.banzaicloud.io/targetAverageUtilization"] = "70"
-	}
-
-	return annotations
-}
-
 func genEnvFromSecret(envName string, secretName string, secretKey string) corev1.EnvVar {
 	env := corev1.EnvVar{
 		Name: envName,
@@ -122,4 +115,26 @@ func genEnvFromSecret(envName string, secretName string, secretKey string) corev
 		},
 	}
 	return env
+}
+
+func getAnnotations(orderSystem *appsv1alpha1.OrderSystem) map[string]string {
+	isIstioEnabled := orderSystem.Spec.InjectIstioSidecarEnabled
+	isAutoscaleEnabled := orderSystem.Spec.HPA.Enabled
+
+	annotations := map[string]string{injectIstoAnnotation: strconv.FormatBool(isIstioEnabled)}
+
+	if isAutoscaleEnabled {
+		annotations[hpaMinReplicaAnnotation] = defaultIfEmpty(orderSystem.Spec.HPA.MinReplicas, hpaDefaultMinReplicate)
+		annotations[hpaMaxReplicaAnnotation] = defaultIfEmpty(orderSystem.Spec.HPA.MaxReplicas, hpaDefaultMaxReplicate)
+		annotations[hpaCpuTargetAverageUtilizationAnnotation] = defaultIfEmpty(orderSystem.Spec.HPA.TargetAverageUtilization, hpaDefaultCpuTargetAverageUtilization)
+	}
+
+	return annotations
+}
+
+func defaultIfEmpty(value string, defaultValue string) string {
+	if value != "" {
+		return value
+	}
+	return defaultValue
 }

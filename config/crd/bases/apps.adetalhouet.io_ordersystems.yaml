@@ -36,11 +36,20 @@ spec:
         spec:
           description: OrderSystemSpec defines the desired state of OrderSystem
           properties:
-            autoscaleEnabled:
+            autoscale:
               description: Autoscale
-              type: boolean
+              properties:
+                enabled:
+                  type: boolean
+                maxReplicas:
+                  type: string
+                minReplicas:
+                  type: string
+                targetAverageUtilization:
+                  type: string
+              type: object
             injectIstioSidecarEnabled:
-              description: Whether or not to inject Istio
+              description: '---- Optional fields Whether or not to inject Istio'
               type: boolean
             nats:
               description: Nats service
@@ -74,8 +83,6 @@ spec:
               description: Version of the Order System
               type: string
           required:
-          - autoscaleEnabled
-          - injectIstioSidecarEnabled
           - nats
           - postgres
           - version

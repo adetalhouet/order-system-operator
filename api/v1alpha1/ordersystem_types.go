@@ -28,18 +28,26 @@ type Info struct {
 	Service string `json:"serviceName"`
 }
 
+type Autoscale struct {
+	Enabled                  bool   `json:"enabled,omitempty"`
+	MinReplicas              string `json:"minReplicas,omitempty"`
+	MaxReplicas              string `json:"maxReplicas,omitempty"`
+	TargetAverageUtilization string `json:"targetAverageUtilization,omitempty"`
+}
+
 // OrderSystemSpec defines the desired state of OrderSystem
 type OrderSystemSpec struct {
 	// Version of the Order System
 	Version string `json:"version"`
-	// Whether or not to inject Istio
-	InjectIstioSidecarEnabled bool `json:"injectIstioSidecarEnabled"`
-	// Autoscale
-	AutoscaleEnabled bool `json:"autoscaleEnabled"`
 	// Database service
 	DbInfo Info `json:"postgres"`
 	// Nats service
 	NatsInfo Info `json:"nats"`
+	// ---- Optional fields
+	// Whether or not to inject Istio
+	InjectIstioSidecarEnabled bool `json:"injectIstioSidecarEnabled,omitempty"`
+	// Autoscale
+	HPA Autoscale `json:"autoscale,omitempty"`
 }
 
 // OrderSystemStatus defines the observed state of OrderSystem
