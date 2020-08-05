@@ -12,5 +12,5 @@ spec:
      serviceName: "order-system-db-postgresql"
   autoscale:
      enabled: true
-     minReplicas: "3"
+     minReplicas: "1"
      maxReplicas: "5"

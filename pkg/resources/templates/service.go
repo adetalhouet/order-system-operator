@@ -34,13 +34,13 @@ func GetServiceName(deploymentName string) string {
 }
 
 // ServiceSpec is the service manifest template
-func ServiceSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string, service Service) *corev1.Service {
+func ServiceSpec(orderSystem *appsv1alpha1.OrderSystem, deploymentName string, serviceName string, service Service) *corev1.Service {
 	selector := map[string]string{
 		"app": deploymentName,
 	}
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      GetServiceName(deploymentName),
+			Name:      serviceName,
 			Namespace: orderSystem.Namespace,
 			Labels:    GetOrderSystemLabels(orderSystem.Name),
 		},

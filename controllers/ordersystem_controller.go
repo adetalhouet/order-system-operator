@@ -22,6 +22,7 @@ import (
 
 	appsv1alpha1 "github.com/adetalhouet/order-system-operator/api/v1alpha1"
 	"github.com/adetalhouet/order-system-operator/pkg/resources/templates"
+	"github.com/banzaicloud/k8s-objectmatcher/patch"
 	"github.com/redhat-cop/operator-utils/pkg/util"
 	"github.com/redhat-cop/operator-utils/pkg/util/apis"
 	appsv1 "k8s.io/api/apps/v1"
@@ -39,8 +40,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
+// +kubebuilder:rbac:groups=apps.adetalhouet.io,resources=ordersystems,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps.adetalhouet.io,resources=ordersystems/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
+
 const controllerName = "ordersystem_crd"
 const orderSystemFinalizer = "io.adetalhouet.ordersystem.finalizer"
+
+var apps = map[string]templates.Service{
+	"cart-service":    templates.Service{Port: 9090, Type: corev1.ServiceTypeClusterIP},
+	"client-service":  templates.Service{Port: 9091, Type: corev1.ServiceTypeClusterIP},
+	"order-service":   templates.Service{Port: 9092, Type: corev1.ServiceTypeClusterIP},
+	"product-service": templates.Service{Port: 9093, Type: corev1.ServiceTypeClusterIP},
+	"api-gw-service":  templates.Service{Port: 8080, Type: corev1.ServiceTypeLoadBalancer}}
 
 var log = logf.Log.WithName(controllerName)
 
@@ -55,14 +71,14 @@ func Add(mgr manager.Manager) error {
 	return add(mgr, newReconciler(mgr))
 }
 
-// newReconciler returns a new reconcile.Reconciler
+// newReconciler returns a new reconcile.r
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &OrderSystemReconciler{
 		ReconcilerBase: util.NewReconcilerBase(mgr.GetClient(), mgr.GetScheme(), mgr.GetConfig(), mgr.GetEventRecorderFor(controllerName)),
 	}
 }
 
-// add adds a new Controller to mgr with r as the reconcile.Reconciler
+// add adds a new Controller to mgr with r as the reconcile.r
 func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Create a new controller
 	c, err := controller.New(controllerName, mgr, controller.Options{Reconciler: r})
@@ -106,22 +122,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	return nil
 }
 
-// +kubebuilder:rbac:groups=apps.adetalhouet.io,resources=ordersystems,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=apps.adetalhouet.io,resources=ordersystems/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;
-// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
-
 // Reconcile blah
-func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", req.Namespace, "Request.Name", req.Name)
 	reqLogger.Info("Reconciling OrderSystem")
 
 	// Fetch the CRD instance
 	instance := &appsv1alpha1.OrderSystem{}
-	err := reconciler.GetClient().Get(context.Background(), req.NamespacedName, instance)
+	err := r.GetClient().Get(context.Background(), req.NamespacedName, instance)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("OrderSystem resource not found. Ignoring since object must be deleted")
@@ -129,20 +137,20 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 		}
 		// Error reading the object - requeue the request.
 		log.Error(err, "Failed to get OrderSystem")
-		return reconciler.ManageError(instance, err)
+		return r.ManageError(instance, err)
 	}
 
 	// Managing CR validation
-	if ok, err := reconciler.isValid(instance); !ok {
-		return reconciler.ManageError(instance, err)
+	if ok, err := r.isValid(instance); !ok {
+		return r.ManageError(instance, err)
 	}
 
 	// Managing CR Initialization
-	if ok := reconciler.isInitialized(instance); !ok {
-		err := reconciler.GetClient().Update(context.Background(), instance)
+	if ok := r.isInitialized(instance); !ok {
+		err := r.GetClient().Update(context.Background(), instance)
 		if err != nil {
 			log.Error(err, "unable to update instance", "instance", instance)
-			return reconciler.ManageError(instance, err)
+			return r.ManageError(instance, err)
 		}
 		return reconcile.Result{}, nil
 	}
@@ -152,31 +160,31 @@ func (reconciler *OrderSystemReconciler) Reconcile(req ctrl.Request) (ctrl.Resul
 		if !util.HasFinalizer(instance, orderSystemFinalizer) {
 			return reconcile.Result{}, nil
 		}
-		err := reconciler.manageCleanUpLogic(instance)
+		err := r.manageCleanUpLogic(instance)
 
 		if err != nil {
 			log.Error(err, "unable to delete instance", "instance", instance)
-			return reconciler.ManageError(instance, err)
+			return r.ManageError(instance, err)
 		}
 		util.RemoveFinalizer(instance, orderSystemFinalizer)
-		err = reconciler.GetClient().Update(context.Background(), instance)
+		err = r.GetClient().Update(context.Background(), instance)
 		if err != nil {
 			log.Error(err, "unable to update instance", "instance", instance)
-			return reconciler.ManageError(instance, err)
+			return r.ManageError(instance, err)
 		}
 		return reconcile.Result{}, nil
 	}
 
 	// Managing Order System Logic
-	err = reconciler.manageOperatorLogic(instance)
+	err = r.manageOperatorLogic(instance)
 	if err != nil {
-		return reconciler.ManageError(instance, err)
+		return r.ManageError(instance, err)
 	}
 
-	return reconciler.ManageSuccess(instance)
+	return r.ManageSuccess(instance)
 }
 
-func (reconciler *OrderSystemReconciler) isInitialized(obj metav1.Object) bool {
+func (r *OrderSystemReconciler) isInitialized(obj metav1.Object) bool {
 	orderSystem, ok := obj.(*appsv1alpha1.OrderSystem)
 	if !ok {
 		return false
@@ -189,7 +197,7 @@ func (reconciler *OrderSystemReconciler) isInitialized(obj metav1.Object) bool {
 
 }
 
-func (reconciler *OrderSystemReconciler) isValid(obj metav1.Object) (bool, error) {
+func (r *OrderSystemReconciler) isValid(obj metav1.Object) (bool, error) {
 	orderSystem, ok := obj.(*appsv1alpha1.OrderSystem)
 	if !ok {
 		return false, errors.New("not an OrderSystem object")
@@ -198,7 +206,7 @@ func (reconciler *OrderSystemReconciler) isValid(obj metav1.Object) (bool, error
 	// Validate the nats and db services exist
 	services := []string{orderSystem.Spec.DbInfo.Service, orderSystem.Spec.NatsInfo.Service}
 	service := &corev1.Service{}
-	err := reconciler.checkIfResourcesExist(orderSystem, services, service)
+	err := r.checkIfResourcesExist(orderSystem, services, service)
 	if err != nil {
 		return false, err
 	}
@@ -206,7 +214,7 @@ func (reconciler *OrderSystemReconciler) isValid(obj metav1.Object) (bool, error
 	// Validate the nats and db secrets exists
 	secrets := []string{orderSystem.Spec.DbInfo.Secret, orderSystem.Spec.NatsInfo.Secret}
 	secret := &corev1.Secret{}
-	err = reconciler.checkIfResourcesExist(orderSystem, secrets, secret)
+	err = r.checkIfResourcesExist(orderSystem, secrets, secret)
 	if err != nil {
 		return false, err
 	}
@@ -214,13 +222,13 @@ func (reconciler *OrderSystemReconciler) isValid(obj metav1.Object) (bool, error
 	return true, nil
 }
 
-func (reconciler *OrderSystemReconciler) checkIfResourcesExist(orderSystem *appsv1alpha1.OrderSystem, objs []string, obj runtime.Object) error {
+func (r *OrderSystemReconciler) checkIfResourcesExist(orderSystem *appsv1alpha1.OrderSystem, objs []string, obj runtime.Object) error {
 	for _, objName := range objs {
 		objNamespaceName := types.NamespacedName{
 			Name:      objName,
 			Namespace: orderSystem.Namespace,
 		}
-		err := reconciler.GetClient().Get(context.Background(), objNamespaceName, obj)
+		err := r.GetClient().Get(context.Background(), objNamespaceName, obj)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return errors.New("provided object(" + objNamespaceName.String() + ") doesn't exist")
@@ -230,43 +238,100 @@ func (reconciler *OrderSystemReconciler) checkIfResourcesExist(orderSystem *apps
 	return nil
 }
 
-func (reconciler *OrderSystemReconciler) manageCleanUpLogic(orderSystem *appsv1alpha1.OrderSystem) error {
-	return reconciler.handleResources(orderSystem, true)
+func (r *OrderSystemReconciler) manageCleanUpLogic(orderSystem *appsv1alpha1.OrderSystem) error {
+	return r.handleResources(orderSystem, true)
 }
 
-func (reconciler *OrderSystemReconciler) manageOperatorLogic(orderSystem *appsv1alpha1.OrderSystem) error {
+func (r *OrderSystemReconciler) manageOperatorLogic(orderSystem *appsv1alpha1.OrderSystem) error {
 
-	err := reconciler.handleResources(orderSystem, false)
+	err := r.handleResources(orderSystem, false)
 	if err != nil {
 		return err
 	}
 
 	// TODO handle istio
-	// TODO handle autoscale
 
 	return nil
 }
 
-func (reconciler *OrderSystemReconciler) handleResources(orderSystem *appsv1alpha1.OrderSystem, isDelete bool) error {
-	resources := []apis.Resource{}
+func (r *OrderSystemReconciler) handleResources(orderSystem *appsv1alpha1.OrderSystem, isDelete bool) error {
 
-	var apps = map[string]templates.Service{
-		"cart-service":    templates.Service{Port: 9090, Type: corev1.ServiceTypeClusterIP},
-		"client-service":  templates.Service{Port: 9091, Type: corev1.ServiceTypeClusterIP},
-		"order-service":   templates.Service{Port: 9092, Type: corev1.ServiceTypeClusterIP},
-		"product-service": templates.Service{Port: 9093, Type: corev1.ServiceTypeClusterIP},
-		"api-gw-service":  templates.Service{Port: 8080, Type: corev1.ServiceTypeLoadBalancer}}
-
-	resources = append(resources, templates.ConfigMapSpec(orderSystem, apps))
+	// configmap
+	cm := templates.ConfigMapSpec(orderSystem, apps)
+	if err := r.handleResource(orderSystem, cm, "ConfigMap", isDelete); err != nil {
+		return err
+	}
 
 	for podName, service := range apps {
+		// deployment
 		depName := templates.GetDeploymentName(orderSystem, podName)
-		resources = append(resources, templates.DeploymentSpec(orderSystem, depName, podName, service))
-		resources = append(resources, templates.ServiceSpec(orderSystem, depName, service))
+		dep := templates.DeploymentSpec(orderSystem, depName, podName, service)
+		if err := r.handleResource(orderSystem, dep, "Deployment", isDelete); err != nil {
+			return err
+		}
+
+		// service
+		svcName := templates.GetServiceName(depName)
+		svc := templates.ServiceSpec(orderSystem, depName, svcName, service)
+		if err := r.handleResource(orderSystem, svc, "Service", isDelete); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *OrderSystemReconciler) handleResource(orderSystem *appsv1alpha1.OrderSystem, modified apis.Resource, resourceType string, isDelete bool) error {
+
+	namespacedName := types.NamespacedName{
+		Name:      modified.GetName(),
+		Namespace: orderSystem.Namespace,
 	}
 
-	if isDelete {
-		return reconciler.DeleteResourcesIfExist(resources)
+	var current apis.Resource
+	switch resourceType {
+	case "ConfigMap":
+		current = &corev1.ConfigMap{}
+	case "Deployment":
+		current = &appsv1.Deployment{}
+	case "Service":
+		current = &corev1.Service{}
+	default:
+		return errors.New("Unknown resource type: " + resourceType)
 	}
-	return reconciler.CreateResourcesIfNotExist(orderSystem, orderSystem.Namespace, resources)
+
+	// Get current object
+	err := r.GetClient().Get(context.TODO(), namespacedName, current)
+
+	// Create
+	if err != nil && apierrors.IsNotFound(err) {
+		if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(modified); err != nil {
+			return err
+		}
+		log.Info("CREATE " + resourceType + "/" + namespacedName.String())
+		return r.CreateResourceIfNotExists(orderSystem, orderSystem.Namespace, modified)
+	}
+
+	// Update
+	patchResult, err := patch.DefaultPatchMaker.Calculate(current, modified)
+	if err != nil {
+		return err
+	}
+	if !patchResult.IsEmpty() {
+		if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(modified); err != nil {
+			return err
+		}
+		log.Info("UPDATE " + resourceType + "/" + namespacedName.String())
+		err = r.GetClient().Update(context.TODO(), modified)
+		if err != nil {
+			log.Error(err, "unable to update object", "object", modified)
+			return err
+		}
+	}
+
+	// Delete
+	if isDelete {
+		log.Info("DELETE " + resourceType + "/" + namespacedName.String())
+		return r.DeleteResourceIfExists(modified)
+	}
+	return nil
 }
